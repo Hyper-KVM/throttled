@@ -3,45 +3,7 @@ This tool was originally developed to fix Linux CPU throttling issues affecting 
 
 The CPU package power limit (PL1/2) is forced to a value of **44 W** (29 W on battery) and the temperature trip point to **95 'C** (85 'C on battery) by overriding default values in MSR and MCHBAR every 5 seconds (30 on battery) to block the Embedded Controller from resetting these values to default.
 
-On systems where the EC doesn't reset the values (ex: ASUS Zenbook UX430UNR), the power limit can be altered by using the official intel_rapl driver (note: [5.3](https://git.kernel.org/pub/scm/linux/kernel/git/rzhang/linux.git/commit/drivers/thermal/intel/int340x_thermal/processor_thermal_device.c?h=for-5.4&id=555c45fe0d04bd817e245a125d242b6a86af4593) or newer is required, if you want to change the MCHBAR values):
-```
-# MSR
-# PL1
-echo 44000000 | sudo tee /sys/devices/virtual/powercap/intel-rapl/intel-rapl:0/constraint_0_power_limit_uw # 44 watt
-echo 28000000 | sudo tee /sys/devices/virtual/powercap/intel-rapl/intel-rapl:0/constraint_0_time_window_us # 28 sec
-# PL2
-echo 44000000 | sudo tee /sys/devices/virtual/powercap/intel-rapl/intel-rapl:0/constraint_1_power_limit_uw # 44 watt
-echo 2440 | sudo tee /sys/devices/virtual/powercap/intel-rapl/intel-rapl:0/constraint_1_time_window_us # 0.00244 sec
-
-# MCHBAR
-# PL1
-echo 44000000 | sudo tee /sys/devices/virtual/powercap/intel-rapl-mmio/intel-rapl-mmio:0/constraint_0_power_limit_uw # 44 watt
-# ^ Only required change on a ASUS Zenbook UX430UNR
-echo 28000000 | sudo tee /sys/devices/virtual/powercap/intel-rapl-mmio/intel-rapl-mmio:0/constraint_0_time_window_us # 28 sec
-# PL2
-echo 44000000 | sudo tee /sys/devices/virtual/powercap/intel-rapl-mmio/intel-rapl-mmio:0/constraint_1_power_limit_uw # 44 watt
-echo 2440 | sudo tee /sys/devices/virtual/powercap/intel-rapl-mmio/intel-rapl-mmio:0/constraint_1_time_window_us # 0.00244 sec
-```
-If you want to change the values automatic on boot you can use [systemd-tmpfiles](https://www.freedesktop.org/software/systemd/man/tmpfiles.d.html):
-```
-# /etc/tmpfiles.d/power_limit.conf
-# MSR
-# PL1
-w /sys/devices/virtual/powercap/intel-rapl/intel-rapl:0/constraint_0_power_limit_uw - - - - 44000000
-w /sys/devices/virtual/powercap/intel-rapl/intel-rapl:0/constraint_0_time_window_us - - - - 28000000
-# PL2
-w /sys/devices/virtual/powercap/intel-rapl/intel-rapl:0/constraint_1_power_limit_uw - - - - 44000000
-w /sys/devices/virtual/powercap/intel-rapl/intel-rapl:0/constraint_1_time_window_us - - - - 2440
-
-# MCHBAR
-# PL1
-w /sys/devices/virtual/powercap/intel-rapl-mmio/intel-rapl-mmio:0/constraint_0_power_limit_uw - - - - 44000000
-# ^ Only required change on a ASUS Zenbook UX430UNR
-w /sys/devices/virtual/powercap/intel-rapl-mmio/intel-rapl-mmio:0/constraint_0_time_window_us - - - - 28000000
-# PL2
-w /sys/devices/virtual/powercap/intel-rapl-mmio/intel-rapl-mmio:0/constraint_1_power_limit_uw - - - - 44000000
-w /sys/devices/virtual/powercap/intel-rapl-mmio/intel-rapl-mmio:0/constraint_1_time_window_us - - - - 2440
-```
+On systems where the EC doesn't reset the values (ex: ASUS Zenbook UX430UNR), the power limit can be altered by using the official intel_rapl driver (see [Static fix](#static-fix) for more information)
 
 ### Tested hardware
 Other users have confirmed that the tool is also working for these laptops:
@@ -62,7 +24,7 @@ The tool supports **undervolting** the CPU by configuring voltage offsets for CP
 The tool now supports overriding the **IccMax** by configuring the maximum allowed current for CPU, cache and GPU planes. The tool will re-apply IccMax on resume from standby and hibernate. You can now either use the `ICCMAX` key in config to set global values or the `ICCMAX.AC` and `ICCMAX.BATTERY` keys to selectively set current values for the two power profiles. **NOTE:** the values specified in the config file are the actual current limit of your system, so those are not a offset from the default values as for the undervolt. As such, you should first find your system default values with the `--monitor` command. 
 
 ### HWP override (EXPERIMENTAL)
-I have found that under load my CPU was not always hitting max turbo frequency, in particular when using one/two cores only. For instance, when running [prime95](https://www.mersenne.org/download/) (1 core, test #1) my CPU is limited to about 3500 MHz over the theoretical 4000 MHz maximum. The reason is the value for the HWP energy performance [hints](http://manpages.ubuntu.com/manpages/artful/man8/x86_energy_perf_policy.8.html). By default TLP sets this value to `balance_performance` on AC in order to reduce the power consumption/heat in idle. By setting this value to `performance` I was able to reach 3900 MHz in the prime95 single core test, achieving a +400 MHz boost. Since this value forces the CPU to full speed even during idle, a new experimental feature allows to automatically set HWP to performance under load and revert it to balanced when idle. This feature can be enabled (in AC mode *only*) by setting to `True` the `HWP_Mode` parameter in the config file.
+I have found that under load my CPU was not always hitting max turbo frequency, in particular when using one/two cores only. For instance, when running [prime95](https://www.mersenne.org/download/) (1 core, test #1) my CPU is limited to about 3500 MHz over the theoretical 4000 MHz maximum. The reason is the value for the HWP energy performance [hints](http://manpages.ubuntu.com/manpages/artful/man8/x86_energy_perf_policy.8.html). By default TLP sets this value to `balance_performance` on AC in order to reduce the power consumption/heat in idle. By setting this value to `performance` I was able to reach 3900 MHz in the prime95 single core test, achieving a +400 MHz boost. Since this value forces the CPU to full speed even during idle, a new experimental feature allows to automatically set HWP to performance under load and revert it to balanced when idle. This feature can be enabled (in AC mode *only*) by setting to `True` the `HWP_Mode` parameter in the lenovo_fix config file : https://github.com/erpalma/throttled/blob/master/etc/lenovo_fix.conf#L39 .
 
 I have run **[Geekbench 4](https://browser.geekbench.com/v4/cpu/8656840)** and now I can get a score of 5391/17265! On `balance_performance` I can reach only 4672/16129, so **15% improvement** in single core and 7% in multicore, not bad ;)
 
@@ -231,6 +193,47 @@ With the flag `--monitor` the tool *constantly* monitors the throttling status, 
 [D] Realtime monitoring of throttling causes:
 
 [AC] Thermal: OK - Power: OK - Current: OK - Cross-domain (e.g. GPU): OK  ||  VCore: 549 mV - Package: 2.6 W - Graphics: 0.4 W - DRAM: 1.2 W
+```
+
+## Static Fix
+You can alternatively set the power limits using intel_rapl driver (modifying MCHBAR values requires [Linux 5.3+](https://git.kernel.org/pub/scm/linux/kernel/git/rzhang/linux.git/commit/drivers/thermal/intel/int340x_thermal/processor_thermal_device.c?h=for-5.4&id=555c45fe0d04bd817e245a125d242b6a86af4593)). Bear in mind, some embedded controllers (EC) control the power limit values and will reset them from time to time):
+```
+# MSR
+# PL1
+echo 44000000 | sudo tee /sys/devices/virtual/powercap/intel-rapl/intel-rapl:0/constraint_0_power_limit_uw # 44 watt
+echo 28000000 | sudo tee /sys/devices/virtual/powercap/intel-rapl/intel-rapl:0/constraint_0_time_window_us # 28 sec
+# PL2
+echo 44000000 | sudo tee /sys/devices/virtual/powercap/intel-rapl/intel-rapl:0/constraint_1_power_limit_uw # 44 watt
+echo 2440 | sudo tee /sys/devices/virtual/powercap/intel-rapl/intel-rapl:0/constraint_1_time_window_us # 0.00244 sec
+
+# MCHBAR
+# PL1
+echo 44000000 | sudo tee /sys/devices/virtual/powercap/intel-rapl-mmio/intel-rapl-mmio:0/constraint_0_power_limit_uw # 44 watt
+# ^ Only required change on a ASUS Zenbook UX430UNR
+echo 28000000 | sudo tee /sys/devices/virtual/powercap/intel-rapl-mmio/intel-rapl-mmio:0/constraint_0_time_window_us # 28 sec
+# PL2
+echo 44000000 | sudo tee /sys/devices/virtual/powercap/intel-rapl-mmio/intel-rapl-mmio:0/constraint_1_power_limit_uw # 44 watt
+echo 2440 | sudo tee /sys/devices/virtual/powercap/intel-rapl-mmio/intel-rapl-mmio:0/constraint_1_time_window_us # 0.00244 sec
+```
+If you want to change the values automatic on boot you can use [systemd-tmpfiles](https://www.freedesktop.org/software/systemd/man/tmpfiles.d.html):
+```
+# /etc/tmpfiles.d/power_limit.conf
+# MSR
+# PL1
+w /sys/devices/virtual/powercap/intel-rapl/intel-rapl:0/constraint_0_power_limit_uw - - - - 44000000
+w /sys/devices/virtual/powercap/intel-rapl/intel-rapl:0/constraint_0_time_window_us - - - - 28000000
+# PL2
+w /sys/devices/virtual/powercap/intel-rapl/intel-rapl:0/constraint_1_power_limit_uw - - - - 44000000
+w /sys/devices/virtual/powercap/intel-rapl/intel-rapl:0/constraint_1_time_window_us - - - - 2440
+
+# MCHBAR
+# PL1
+w /sys/devices/virtual/powercap/intel-rapl-mmio/intel-rapl-mmio:0/constraint_0_power_limit_uw - - - - 44000000
+# ^ Only required change on a ASUS Zenbook UX430UNR
+w /sys/devices/virtual/powercap/intel-rapl-mmio/intel-rapl-mmio:0/constraint_0_time_window_us - - - - 28000000
+# PL2
+w /sys/devices/virtual/powercap/intel-rapl-mmio/intel-rapl-mmio:0/constraint_1_power_limit_uw - - - - 44000000
+w /sys/devices/virtual/powercap/intel-rapl-mmio/intel-rapl-mmio:0/constraint_1_time_window_us - - - - 2440
 ```
 
 ## Debug

@@ -77,6 +77,7 @@ supported_cpus = {
     'Kaby Lake (R)': (0x8E, 0x9E),
     'Coffee Lake': (0x9E,),
     'Cannon Lake': (0x66,),
+    'Comet Lake': (0xA6,),
 }
 
 
@@ -530,8 +531,8 @@ def set_hwp():
 
 def set_disable_bdprochot():
     # Disable BDPROCHOT
-    cur_val = readmsr(0x1FC,flatten=True)
-    new_val = (cur_val & 0xFFFFFFFFFFFFFFFE)
+    cur_val = readmsr(0x1FC, flatten=True)
+    new_val = cur_val & 0xFFFFFFFFFFFFFFFE
 
     writemsr(0x1FC, new_val)
     if args.debug:
@@ -787,6 +788,7 @@ def main():
     regs = calc_reg_values(platform_info, config)
 
     if not config.getboolean('GENERAL', 'Enabled'):
+        log('[I] Throttled is disabled in config file... Quitting. :(')
         return
 
     exit_event = Event()
